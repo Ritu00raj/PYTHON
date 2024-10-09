@@ -1,0 +1,142 @@
+ import csv
+import os
+import requests
+from getpass import getpass
+
+CSV_FILE = '12320658.csv'
+API_KEY = '4a11d406df61eb35325703bed93abbca'  
+BASE_URL = "http://api.openweathermap.org/data/2.5/weather"
+
+
+def load_user_data():
+    users = {}
+    try:
+        with open(CSV_FILE, mode='r') as file:
+            reader = csv.DictReader(file)
+            for row in reader:
+                users[row['email']] = {
+                    'password': row['password'],
+                    'security_ques': row['security_ques'],
+                    'security_ans': row['security_ans']
+                }
+    except FileNotFoundError:
+        print("No user data found. Please register.")
+    return users
+
+
+def register_user():
+    email = input("Enter your email: ")
+    password = input("Enter your password: ")
+    security_ques = input("Set a security question: ")
+    security_ans = input("Answer to the security question: ")
+    file_exists = os.path.isfile(CSV_FILE)
+    
+    with open(CSV_FILE, mode='a', newline='') as file:
+        writer = csv.writer(file)
+        if not file_exists:
+            writer.writerow(['email', 'password', 'security_ques', 'security_ans'])
+        writer.writerow([email, password, security_ques, security_ans])
+    
+    print("User registered successfully!")
+
+
+def validate_password(password):
+    if (len(password) >= 8 and
+            any(c.islower() for c in password) and
+            any(c.isupper() for c in password) and
+            any(c.isdigit() for c in password) and
+            any(c in "!@#$%^&*()_+" for c in password)):
+        return True
+    return False
+
+
+def reset_password(users):
+    email = input("Enter your registered email: ")
+    if email in users:
+        answer = input(f"Answer security question: {users[email]['security_ques']}: ")
+        if answer == users[email]['security_ans']:
+            new_password = input("Enter new password: ")
+            if validate_password(new_password):
+                users[email]['password'] = new_password
+                update_csv(users)
+                print("Password reset successful!")
+            else:
+                print("Password does not meet criteria!")
+        else:
+            print("Incorrect answer!")
+    else:
+        print("Email not found!")
+
+
+def update_csv(users):
+    with open(CSV_FILE, mode='w', newline='') as file:
+        writer = csv.writer(file)
+        writer.writerow(['email', 'password', 'security_ques', 'security_ans'])
+        for email, data in users.items():
+            writer.writerow([email, data['password'], data['security_ques'], data['security_ans']])
+
+
+def login(users, max_attempts=5):
+    attempts = 0
+    while attempts < max_attempts:
+        email = input("Enter email: ")
+        password = getpass("Enter password: ")
+        
+        if email in users and users[email]['password'] == password:
+            print("Login successful!")
+            return True, email
+        else:
+            attempts += 1
+            print(f"Invalid credentials. {max_attempts - attempts} attempts left.")
+    return False, None
+
+
+def fetch_weather(city_name):
+    params = {
+        'q': city_name,
+        'appid': API_KEY,
+        'units': 'metric' 
+    }
+    response = requests.get(BASE_URL, params=params)
+
+    if response.status_code == 200:
+        data = response.json()
+        print(f"City: {data['name']}")
+        print(f"Temperature: {data['main']['temp']} °C")
+        print(f"Weather: {data['weather'][0]['description']}")
+        print(f"Humidity: {data['main']['humidity']}%")
+        print(f"Wind Speed: {data['wind']['speed']} m/s")
+    else:
+        print("City not found or error occurred!")
+
+
+def main():
+    users = load_user_data()  
+    
+    while True:
+        print("1. Register\n2. Login\n3. Forgot Password\n4. Exit")
+        choice = input("Choose an option: ")
+        
+        if choice == '1':
+            register_user()
+            users = load_user_data()  
+        elif choice == '2':
+            is_logged_in, email = login(users)
+            if is_logged_in:
+                while True:
+                    city_name = input("Enter city name to get weather (or type 'exit' to return to the main menu): ")
+                    if city_name.lower() == 'exit':
+                        break
+                    fetch_weather(city_name)
+        elif choice == '3':
+            reset_password(users)
+        elif choice == '4':
+            print("Exiting...")
+            break
+        else:
+            print("Invalid choice! Please try again.")
+
+
+if __name__ == "__main__":
+    main()
+
